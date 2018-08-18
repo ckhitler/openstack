@@ -1,0 +1,65 @@
+经工程师反映,centos7的镜像无法在openstack上正常启动,而ubuntu可以正常启动.
+
+查看centos7的日志如下:
+nova console-log testing
+
+[[32m  OK  [0m] Started D-Bus System Message Bus.
+[    3.872505] i6300esb: Intel 6300ESB WatchDog Timer Driver v0.05
+[    3.875822] i6300esb: initialized (0xffffc90000724000). heartbeat=30 sec (nowayout=0)
+[    3.890694] input: PC Speaker as /devices/platform/pcspkr/input/input5
+[    3.929972] sd 2:0:0:0: Attached scsi generic sg0 type 0
+         Starting D-Bus System Message Bus...
+[[32m  OK  [0m] Started irqbalance daemon.
+         Starting irqbalance daemon...
+         Starting Login Service...
+         Starting Authorization Manager...
+         Starting GSSAPI Proxy Daemon...
+[    3.987791] ppdev: user-space parallel port driver
+[[32m  OK  [0m] Started Dump dmesg to /var/log/dmesg.
+[[32m  OK  [0m] Started NTP client/server.
+[    4.087367] [drm] Device Version 0.0
+[    4.088198] [drm] Compression level 0 log level 0
+[    4.089109] [drm] Currently using mode #0, list at 0x488
+[    4.090099] [drm] 12286 io pages at offset 0x1000000
+[    4.091105] [drm] 16777216 byte draw area at offset 0x0
+[    4.092106] [drm] RAM header offset: 0x3ffe000
+[    4.093035] [drm] rom modes offset 0x488 for 128 
+
+
+
+经分析是由于centos7无法正常使用显卡问题导致,这里要在内核引导参数加上nomodeset.
+如下所示:
+GRUB_CMDLINE_LINUX="console=tty0 crashkernel=auto console=ttyS0,115200 nomodeset"
+
+重新使用新镜像引导:
+nova console-log testing
+[[32m  OK  [0m] Started Execute cloud user/final scripts.
+[[32m  OK  [0m] Reached target Multi-User System.
+         Starting Update UTMP about System Runlevel Changes...
+[[32m  OK  [0m] Started Update UTMP about System Runlevel Changes.
+
+CentOS Linux 7 (Core)
+Kernel 3.10.0-862.2.3.el7.x86_64 on an x86_64
+
+testing login: [  183.739526] random: crng init done
+[  328.342732] device-mapper: uevent: version 1.0.3
+[  328.343843] device-mapper: ioctl: 4.37.0-ioctl (2017-09-20) initialised: dm-devel@redhat.com
+[  328.793823] xor: automatically using best checksumming function:
+[  328.804366]    avx       : 23128.000 MB/sec
+[  328.830368] raid6: sse2x1   gen()  7804 MB/s
+[  328.847363] raid6: sse2x2   gen()  9839 MB/s
+[  328.864368] raid6: sse2x4   gen() 11703 MB/s
+[  328.881363] raid6: avx2x1   gen() 15750 MB/s
+[  328.898365] raid6: avx2x2   gen() 18187 MB/s
+[  328.915363] raid6: avx2x4   gen() 21312 MB/s
+[  328.915877] raid6: using algorithm avx2x4 gen() (21312 MB/s)
+[  328.916526] raid6: using avx2x2 recovery algorithm
+[  328.975522] Btrfs loaded, crc32c=crc32c-intel
+[  328.985658] fuse init (API version 7.22)
+
+我们看到已经可以进入系统
+
+登录到系统内查看内核参数:
+cat /proc/cmdline 
+BOOT_IMAGE=/boot/vmlinuz-3.10.0-862.2.3.el7.x86_64 root=UUID=5f1871e2-c19c-4f86-8d6c-04d5fda71a0a ro console=tty0 console=ttyS0,115200n8 crashkernel=auto console=ttyS0,115200 LANG=en_US.UTF-8 nomodeset
+
