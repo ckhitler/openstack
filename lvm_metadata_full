@@ -35,9 +35,40 @@ vgchange -an cinder-volumes
 lvconvert --yes --repair cinder-volumes/cinder-volumes-pool
 
 调整cinder-volumes-pool_tmeta卷到1G,如下:
+lvextend --poolmetadatasize +1G cinder-volumes/cinder-volumes-pool
+
+查看如下:
 lvs -a
   LV                                          VG             Attr       LSize   Pool                Origin                                      Data%  Meta%  Move Log Cpy%Sync Convert
   cinder-volumes-pool                         cinder-volumes twi-aotz--   6.63t                                                                 1.23   8.97                            
   [cinder-volumes-pool_tdata]                 cinder-volumes Twi-ao----   6.63t                                                                                                        
   [cinder-volumes-pool_tmeta]                 cinder-volumes ewi-ao----   1.11g                                                                                                        
   [lvol0_pmspare]                             cinder-volumes ewi------- 108.00m                                                                                                        
+
+查看cinder-volumes-pool/thin如下:
+cinder-volumes/cinder-volumes-pool
+  --- Logical volume ---
+  LV Name                cinder-volumes-pool
+  VG Name                cinder-volumes
+  LV UUID                4YtCkW-0XYo-GJQA-OIUu-p61R-FZJL-dcoa6c
+  LV Write Access        read/write
+  LV Creation host, time jitstack0001, 2018-08-17 06:29:38 +0800
+  LV Pool metadata       cinder-volumes-pool_tmeta
+  LV Pool data           cinder-volumes-pool_tdata
+  LV Status              available
+  # open                 32
+  LV Size                6.63 TiB
+  Allocated pool data    1.23%
+  Allocated metadata     8.97%
+  Current LE             1739124
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     16384
+  Block device           253:4
+
+总结:
+1)cinder/lvm会使用thin/pool的模式.
+2)在创建volume之前,cinder会自动在VG/cinder-volumes下创建thin pool.
+3)默认的thin pool的metadata只有100MB,而如果使用6TB的磁盘,默认就会占用26%的空间，所以要在创建volume之前调整metadata空间.
+4)扩容metadata要停止vg,并进行repair.
