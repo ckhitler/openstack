@@ -1,5 +1,6 @@
 客户反映不能对虚机数据卷进行detach.
-数据卷的状态一直为detaching.
+经调整该虚机挂了6个卷,而其中四个卷只能attach,不能detach.
+在nova detach操作后,数据卷的状态一直为detaching.
 
 分析原因如下:
 无法nova volume-detach是由于操作block_device_mapping表数据不一致造成的.
@@ -63,3 +64,8 @@ update block_device_mapping set deleted=2597 where volume_id=volum-id and id=259
 注意:系统卷不能detach.
 
 由于使用卷启动虚机,所以rebuild操作不会重置系统卷,所以最后用rebuild更新虚机信息.
+
+总结:
+1)不要随便手工修改openstack数据库.
+2)block_device_mapping表的deleted字段决定该卷是挂载还是卸载状态.
+3)rebuild操作不会影响通过卷启动的虚机.
