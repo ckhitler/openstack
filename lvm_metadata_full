@@ -1,0 +1,43 @@
+cinder/lvm环境中
+
+无法通过cinder create创建卷,查看cinder-volume.log如下:
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm Traceback (most recent call last):
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm   File "/usr/lib/python2.7/dist-packages/cinder/brick/local_dev/lvm.py", line 564, in create_volume
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm     run_as_root=True)
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm   File "/usr/lib/python2.7/dist-packages/os_brick/executor.py", line 52, in _execute
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm     result = self.__execute(*args, **kwargs)
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm   File "/usr/lib/python2.7/dist-packages/cinder/utils.py", line 126, in execute
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm     return processutils.execute(*cmd, **kwargs)
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm   File "/usr/lib/python2.7/dist-packages/oslo_concurrency/processutils.py", line 424, in execute
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm     cmd=sanitized_cmd)
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm ProcessExecutionError: Unexpected error while running command.
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm Command: sudo cinder-rootwrap /etc/cinder/rootwrap.conf env LC_ALL=C lvcreate -T -V 1g -n volume-090b9c39-409e-4f7b-93c6-85ac5441305a cinder-volumes/cinder-volumes-pool
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm Exit code: 5
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm Stdout: u''
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm Stderr: u'  Thin pool cinder--volumes-cinder--volumes--pool-tpool (253:4) transaction_id is 9, while expected 11.\n  Aborting. Failed to locally activate thin pool cinder-volumes/cinder-volumes-pool.\n'
+2018-08-17 05:45:37.511 54125 ERROR cinder.brick.local_dev.lvm
+2018-08-17 05:45:37.514 54125 ERROR cinder.brick.local_dev.lvm [req-1f73bc71-c583-48bd-930a-fd7fcd8e4f15 8c5195bdbf5842f3af9d764d0d9d679c b6641ca56607418980e37567a08f8b1b - - -] Cmd     :sudo cinder-rootwrap /etc/cinder/rootwrap.conf env LC_ALL=C lvcreate -T -V 1g -n volume-090b9c39-409e-4f7b-93c6-85ac5441305a cinder-volumes/cinder-volumes-pool: ProcessExecutionError: Unexpected error while running command.
+2018-08-17 05:45:37.515 54125 ERROR cinder.brick.local_dev.lvm [req-1f73bc71-c583-48bd-930a-fd7fcd8e4f15 8c5195bdbf5842f3af9d764d0d9d679c b6641ca56607418980e37567a08f8b1b - - -] StdOut  :: ProcessExecutionError: Unexpected error while running command.
+
+经分析是由于metadata用尽导致:
+LV                                          VG             Attr       LSize   Pool                Origin                                      Data%  Meta%  Move Log Cpy%Sync Convert
+  cinder-volumes-pool                         cinder-volumes twi-aotz--   6.63t                                                                 1.23   99.97                            
+  [cinder-volumes-pool_tdata]                 cinder-volumes Twi-ao----   6.63t                                                                                                        
+  [cinder-volumes-pool_tmeta]                 cinder-volumes ewi-ao----   100m                                                                                                        
+  [lvol0_pmspare]                             cinder-volumes ewi------- 108.00m
+
+调整metadata如下:
+
+停止cinder-volumes,如下:
+vgchange -an cinder-volumes
+
+修复cinder-volumes/cinder-volumes-pool
+lvconvert --yes --repair cinder-volumes/cinder-volumes-pool
+
+调整cinder-volumes-pool_tmeta卷到1G,如下:
+lvs -a
+  LV                                          VG             Attr       LSize   Pool                Origin                                      Data%  Meta%  Move Log Cpy%Sync Convert
+  cinder-volumes-pool                         cinder-volumes twi-aotz--   6.63t                                                                 1.23   8.97                            
+  [cinder-volumes-pool_tdata]                 cinder-volumes Twi-ao----   6.63t                                                                                                        
+  [cinder-volumes-pool_tmeta]                 cinder-volumes ewi-ao----   1.11g                                                                                                        
+  [lvol0_pmspare]                             cinder-volumes ewi------- 108.00m                                                                                                        
