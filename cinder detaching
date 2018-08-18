@@ -1,0 +1,65 @@
+客户反映不能对虚机数据卷进行detach.
+数据卷的状态一直为detaching.
+
+分析原因如下:
+无法nova volume-detach是由于操作block_device_mapping表数据不一致造成的.
+每次做nova volume-attach时,会在block_device_mapping表插入新的记录.该记录用于对映虚机和卷的绑定关系.
+例如:
+v1卷被挂载4次,每次都会在该表产生新的数据,而detach时,会将该记录的deleted字段重置为该记录的id.
+
+而出现问题的4个volume,都在该表中有一个未被重置的记录,而如果attach该volume后,等于该volume会有两个虚机使用。
+所以在detach的时候,nova会查询绑定关系,发现除本虚机使用外,还有虚机正在使用该volume
+造成detaching状态.
+block_device_mapping表如下所示:
+MariaDB [nova]> select * from block_device_mapping limit 1\G;
+*************************** 1. row ***************************
+           created_at: 2018-05-23 07:59:45
+           updated_at: 2018-05-23 07:59:46
+           deleted_at: 2018-05-23 08:03:59
+                   id: 1
+          device_name: /dev/vda
+delete_on_termination: 1
+          snapshot_id: NULL
+            volume_id: NULL
+          volume_size: NULL
+            no_device: 0
+      connection_info: NULL
+        instance_uuid: 43d5ffe4-cca7-4a4c-bb74-8ddad0ea7967
+              deleted: 1
+          source_type: image
+     destination_type: local
+         guest_format: NULL
+          device_type: disk
+             disk_bus: NULL
+           boot_index: 0
+             image_id: e8500668-2455-4360-8ef6-525c06db5b76
+                  tag: NULL
+        attachment_id: NULL
+                 uuid: bf8763aa-3785-40e7-9271-be8b41f762c3
+1 row in set (0.00 sec)
+
+注:如deleted字段中如果与id相同,表示该卷已经被detach,如果deleted字段为0,表示该卷正在被attach.
+
+
+处理过程如下:
+运行cinder/client更新状态:
+cinder reset-state --state available --attach-status detached volume-id
+
+进入数据库设定为detached状态:
+use cinder;
+update volume_attachment set attach_status='detached' where volume_id=volume-id
+
+查询出volume_id:
+use nova
+select * from block_device_mapping where volume_id=volume_id
+确认id
+
+更新block_device_mapping,如下:
+update block_device_mapping set deleted=id where volume_id=volum-id and id=id
+
+例如:
+update block_device_mapping set deleted=2597 where volume_id=volum-id and id=2597
+
+注意:系统卷不能detach.
+
+由于使用卷启动虚机,所以rebuild操作不会重置系统卷,所以最后用rebuild更新虚机信息.
